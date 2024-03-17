@@ -12,6 +12,8 @@ find_package(catkin REQUIRED COMPONENTS
 ##rospy
 ##std_msgs
   COMPONENTS
+    message_generation
+    sensor_msgs
     roscpp
     actionlib
     control_msgs
@@ -59,6 +61,11 @@ find_package(catkin REQUIRED COMPONENTS
 #   Message1.msg
 #   Message2.msg
 # )
+add_message_files(
+  FILES
+  Frame.msg
+  RealsenseData.msg
+)
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -79,6 +86,13 @@ find_package(catkin REQUIRED COMPONENTS
 #   DEPENDENCIES
 #   std_msgs
 # )
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  sensor_msgs
+)
+
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##

@@ -8,7 +8,7 @@ from cv_bridge import CvBridge
 from copy import deepcopy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Int16
 import cv2
 import os
 from arm_controller import Arm
@@ -19,21 +19,29 @@ current_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.dirname(current_path)
 print(parent_path)
 
+'''
+robot status:
+    0: wait for new target
+    1: 
+    2: move close to the trash target
+    3:
+    4: grab target
+    5:
+    6: move to designated location
+
+    9: something error 
+'''
+
 class TrashBot:
     def __init__(self):
         rospy.init_node('trash_bot')
         self.arm = Arm()
-        if self.arm.arm_controller:
-            self.grabber = self.arm.arm_controller
+        if self.arm.controller:
+            self.grabber = self.arm.controller
+            self.grabber.set_gripper(0.015)
 
-        self.img_sub = rospy.Subscriber('/camera/image/compressed', CompressedImage, self.imgCallback)
-        self.laser_sub = rospy.Subscriber('/scan', LaserScan, self.lidarCallback)
-        # self.vel_sub = rospy.Subscriber('/cmd_vel', Twist, self.velCallback)
-        self.vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
-        self.depth_pub = rospy.Publisher('/depth', Float32, queue_size=10)
-        self.depth_sub = rospy.Subscriber('/depth', Float32, self.depthCallback)
         self.bridge = CvBridge()
-        models_path = os.path.join(parent_path, 'train3/weights/best.pt')
+        models_path = os.path.join(parent_path, 'weights/cola_bot_s.pt')
         self.model = YOLO(models_path) 
 
         #camera lidar parameter
@@ -54,21 +62,46 @@ class TrashBot:
 
         self.rotation = False
         self.isDetected = False
-        self.enable_imgCallback = True
+        self.enable_imgCallback = False
 
         self.img_center_x = 0
         self.box_center_x = 0
         self.depth = 0
 
         self.neeedAdjust = False
-        
+
+        self.img_sub = rospy.Subscriber('/camera/image/compressed', CompressedImage, self.imgCallback)
+        self.laser_sub = rospy.Subscriber('/scan', LaserScan, self.lidarCallback)
+        # self.imgCb_status_sub = rospy.Subscriber('/tarsh_bot/imgCb_status', bool, self.imgCbStatusCallback)
+        # self.vel_sub = rospy.Subscriber('/cmd_vel', Twist, self.velCallback)
+        self.vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
+        self.depth_pub = rospy.Publisher('/trash_bot/target_depth', Float32, queue_size=1)
+        self.depth_sub = rospy.Subscriber('/trash_bot/target_depth', Float32, self.depthCallback)
+        self.bot_status_sub = rospy.Subscriber("/trash_bot/bot_status", Int16, self.statusCallback)
+        self.bot_status_pub = rospy.Publisher('/trash_bot/bot_status', Int16, queue_size=1)
+
+    def statusCallback(self, msg):
+        status = msg.data
+        if status==2:
+            self.enable_imgCallback = True
+
+        if status==6:
+            # move arm to home position
+            self.grabber.place()
+            self.bot_status_pub.publish(0)
+            pass
+    
+    # def imgCbStatusCallback(self, msg):
+    #     self.enable_imgCallback = msg
+
     def depthCallback(self, msg):
-        if msg.data>0.22:
+        if msg.data>0.23:
             self.neeedAdjust = True
         else:
-            self.grabber.grab(msg.data)
-            print("return the trash successfully")
-            self.enable_imgCallback = True
+            self.grabber.pick(msg.data)
+            rospy.loginfo('\033[32m' + "[INFO] Pick the trash successfully"+ '\033[0m')
+            self.bot_status_pub.publish(4)
+            # self.enable_imgCallback = True
             self.isDetected = False
 
     def lidarCallback(self,msg):
@@ -78,14 +111,13 @@ class TrashBot:
             speed_msg = Twist()
             speed_msg.linear.x = 0.1
             self.vel_pub.publish(speed_msg)
-            if self.depth<0.22:
+            if self.depth<0.23:
                 speed_msg = Twist()
                 speed_msg.linear.x = 0.0
                 self.vel_pub.publish(speed_msg)
                 self.depth_pub.publish(self.depth)
                 self.neeedAdjust = False
         
-
     def imgCallback(self, msg):
         try:
             cv_image = self.bridge.compressed_imgmsg_to_cv2(msg)
@@ -109,15 +141,19 @@ class TrashBot:
                     self.enable_pid = True
                     self.rotation = False
 
+                max_d = None
                 for d in pred_boxes:
-                    c, conf, id = int(d.cls), float(d.conf), None if d.id is None else int(d.id.item())
-                    name = ('' if id is None else f'id:{id} ') + names[c]
-                    label = (f'{name} {conf:.2f}' if conf else name)
-                    annotator.box_label(d.xyxy.squeeze(), 'bottle', color=colors(c, True))
+                    conf = float(d.conf)
                     if conf > max_confidence:
                         max_confidence = conf
-                        max_box = d.xyxy.squeeze().tolist()
-                if max_box is not None:
+                        max_d = d
+
+                if max_d:
+                    c, conf, id = int(max_d.cls), float(max_d.conf), None if max_d.id is None else int(max_d.id.item())
+                    name = ('' if id is None else f'id:{id} ') + 'bottle'
+                    label = (f'{name} {conf:.2f}' if conf else name)
+                    max_box = max_d.xyxy.squeeze().tolist()
+                    annotator.box_label(d.xyxy.squeeze(), label, color=colors(c, True))
                     self.box_center_x = (max_box[0] + max_box[2]) / 2.0
                     self.img_center_x = img_in.shape[1] / 2.0
 
@@ -144,12 +180,12 @@ class TrashBot:
                         speed_msg = Twist()
                         speed_msg.angular.z = 0
                         self.vel_pub.publish(speed_msg)
-                        print("locate the bottle")
-                        print("Get the object depth:",self.depth)
+                        rospy.loginfo('\033[32m' + "[INFO] Locate the bottle"+ '\033[0m')
+                        rospy.loginfo('\033[32m' + "[INFO] Get the object depth: %f"+ '\033[0m',self.depth)
+                        rospy.sleep(1)
                         self.enable_imgCallback = False
-                        self.depth_pub.publish(self.depth)
+                        self.depth_pub.publish(self.depth) 
                         
-
                 img_out = annotator.result()
                 cv2.imshow("Image", img_out)
                 cv2.waitKey(1)

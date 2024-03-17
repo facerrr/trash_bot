@@ -163,19 +163,22 @@ class Controller:
         print("============ Robot Groups:", self.group_names)
 
         self.home_pose = self.group.get_current_pose()
-        self.home_joint = [0.003067961661145091, -1.6122138500213623, 1.2486604452133179, 0.6550098061561584]
-        self.hold_joint = [0.0, 0.0, 0.0, 0.0]
+        self.home_joint = [0.0, -1.6122138500213623, 1.2486604452133179, 0.6550098061561584]
+        self.hold_joint = [0.0, -1.57, 0.96, 0.6]
         self.place_joint = [math.pi/2,0.0,0.0,0.0]
+        self.front_joint = [0.0,0.0,0.0,0.0]
         self.joint3 = [math.pi/2,0.0,0.0,math.pi/2]
 
         self.grab_pose = self.home_pose
         self.grab_pose.pose.position.x = 0.0
         self.grab_pose.pose.position.y = 0.0
-        self.grab_pose.pose.position.z = 0.18
+        self.grab_pose.pose.position.z = 0.14
         self.grab_pose.pose.orientation.x = 0.0
         self.grab_pose.pose.orientation.y = 0.0
         self.grab_pose.pose.orientation.z = 0.0
         self.grab_pose.pose.orientation.w = 1.0
+
+        self.pick_depth = 0.0
 
     def set_gripper(self,arg):
         # open: 0.01 close: -0.001
@@ -194,38 +197,57 @@ class Controller:
 
         elif type(arg) is float:
             pose_goal = self.grab_pose
-            pose_goal.pose.position.x = arg+0.04
+            pose_goal.pose.position.x = arg+0.03
             # print(pose_goal)
             self.group.set_pose_target(pose_goal)
             self.group.go(wait=True)
             self.group.stop()
 
-    def grab(self,depth):
+    def pick(self,depth):
+        self.pick_depth = depth
+    
+        self.move_arm(depth)
+        time.sleep(0.5)
+        self.set_gripper(0.005)
+        time.sleep(0.5)
+        self.move_arm(self.hold_joint)
+        time.sleep(1)
+
+
+        # time.sleep(0.5)
         # self.move_arm(depth)
-        # time.sleep(0.5)
-        # self.set_gripper(-0.001)
-        # time.sleep(0.5)
-        # self.move_arm(self.hold_joint)
-        # time.sleep(0.5)
-        # self.move_arm(self.place_joint)
         # time.sleep(0.5)
         # self.set_gripper(0.015)
         # time.sleep(0.5)
-        # self.move_arm(self.home_joint)
+        # self.move_arm(self.hold_joint)
         # time.sleep(0.5)
 
-        self.move_arm(self.joint3)
-        print(self.group.get_current_pose())
+        # self.move_arm(self.joint3)
+        # print(self.group.get_current_pose())
+
+    def place(self):
+    
+        self.move_arm(self.pick_depth)
+        time.sleep(0.5)
+        self.set_gripper(0.015)
+        time.sleep(0.5)
+        self.move_arm(self.front_joint)
+        time.sleep(0.5)
+        self.move_arm(self.home_joint)
+        time.sleep(1)
+        
+
 
 
 if __name__ == '__main__':
     try:
         rospy.init_node('Arm_node')
-        # arm = Arm()
-        # if arm.controller:
-        #     arm.controller.grab(0.1859)
-        controller = Controller()
-        controller.grab(0.1859)
+        arm = Arm()
+        if arm.controller:
+            arm.controller.pick(0.22)
+            # arm.controller.place()
+        # controller = Controller()
+        # controller.pick(0.1859)
 
     except rospy.ROSInterruptException:
         pass
