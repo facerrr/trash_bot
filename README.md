@@ -10,6 +10,9 @@ $ roslaunch turtlebot3_manipulation_moveit_config move_group.launch
 ``` bash
 $ rosrun trash_bot cleanning.py
 ```
+``` bash
+$ rosrun trash_bot RGBD_by_pipe.py
+```
 
 ## Operate the Virtual Robot
 ``` bash
