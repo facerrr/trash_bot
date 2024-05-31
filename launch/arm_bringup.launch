@@ -1,0 +1,3 @@
+<launch>
+  <node pkg="trash_bot" type="arm_bringup" name="arm_bringup" output="screen"/>
+</launch>

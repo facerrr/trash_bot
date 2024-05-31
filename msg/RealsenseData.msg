@@ -1,0 +1,4 @@
+
+sensor_msgs/CompressedImage image
+std_msgs/Int32MultiArray depth
+sensor_msgs/CameraInfo depth_intrin
